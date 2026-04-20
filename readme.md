@@ -1,5 +1,6 @@
 # NetSentinel IDS
 ### Network Intrusion Detection System
+![image alt](https://github.com/pranish200/Netsentinel/blob/bf1b7f119d58fe3b78609e090392cd25a2714b68/NetSentinel.png)
 Built by praanishh (0xPRX)
 
 ## Features
