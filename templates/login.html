@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetSentinel — Auth</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --void: #00010a;
+            --panel: #020c1a;
+            --rim: #0d2136;
+            --rim2: #143352;
+            --neon: #00f5ff;
+            --fire: #ff3860;
+            --text: #a8d8f0;
+            --text2: #3d6b88;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--void);
+            color: var(--text);
+            font-family: 'IBM Plex Mono', monospace;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        /* Hex background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zm0-2.31L54 50V17.31L28 2.31 2 17.31V50L28 63.69z' fill='none' stroke='%23041020' stroke-width='1'/%3E%3C/svg%3E");
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* Sweep line */
+        @keyframes sweep { from { top: -2px; } to { top: 100vh; } }
+        .sweep {
+            position: fixed;
+            left: 0; top: 0;
+            width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(0,245,255,0.12), transparent);
+            animation: sweep 6s linear infinite;
+            pointer-events: none;
+        }
+
+        /* Corner brackets */
+        .bracket {
+            position: fixed;
+            width: 60px; height: 60px;
+            border-color: rgba(0, 245, 255, 0.15);
+            border-style: solid;
+            pointer-events: none;
+        }
+        .br-tl { top: 24px; left: 24px; border-width: 2px 0 0 2px; }
+        .br-tr { top: 24px; right: 24px; border-width: 2px 2px 0 0; }
+        .br-bl { bottom: 24px; left: 24px; border-width: 0 0 2px 2px; }
+        .br-br { bottom: 24px; right: 24px; border-width: 0 2px 2px 0; }
+
+        /* Terminal text side decoration */
+        .side-text {
+            position: fixed;
+            left: 24px;
+            top: 50%;
+            transform: translateY(-50%) rotate(-90deg);
+            font-size: 0.55rem;
+            letter-spacing: 4px;
+            color: var(--text2);
+            text-transform: uppercase;
+            opacity: 0.4;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        /* Main card */
+        .card {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 400px;
+            padding: 20px;
+        }
+
+        .card-inner {
+            background: var(--panel);
+            border: 1px solid var(--rim2);
+            padding: 48px 40px 40px;
+            position: relative;
+        }
+
+        /* Top neon line */
+        .card-inner::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 10%; right: 10%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--neon), transparent);
+            box-shadow: 0 0 20px var(--neon);
+        }
+
+        /* Bottom dim line */
+        .card-inner::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 30%; right: 30%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--rim2), transparent);
+        }
+
+        /* Corner cuts */
+        .cut-tl, .cut-br {
+            position: absolute;
+            width: 0; height: 0;
+            border-style: solid;
+        }
+        .cut-tl {
+            top: -1px; left: -1px;
+            border-width: 20px 20px 0 0;
+            border-color: var(--void) transparent transparent transparent;
+        }
+        .cut-br {
+            bottom: -1px; right: -1px;
+            border-width: 0 0 20px 20px;
+            border-color: transparent transparent var(--void) transparent;
+        }
+
+        /* Logo */
+        .logo-area {
+            text-align: center;
+            margin-bottom: 44px;
+        }
+
+        .logo-ring {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px; height: 64px;
+            border: 1px solid rgba(0,245,255,0.3);
+            border-radius: 50%;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        @keyframes rotatering {
+            to { transform: rotate(360deg); }
+        }
+
+        .logo-ring::before {
+            content: '';
+            position: absolute;
+            inset: -6px;
+            border: 1px dashed rgba(0,245,255,0.15);
+            border-radius: 50%;
+            animation: rotatering 12s linear infinite;
+        }
+
+        .logo-emoji { font-size: 26px; filter: drop-shadow(0 0 12px rgba(0,245,255,0.6)); }
+
+        .logo-name {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.3rem;
+            font-weight: 900;
+            letter-spacing: 8px;
+            color: var(--neon);
+            text-shadow: 0 0 20px rgba(0,245,255,0.5);
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .logo-sub {
+            font-size: 0.58rem;
+            letter-spacing: 4px;
+            color: var(--text2);
+            text-transform: uppercase;
+        }
+
+        /* Form */
+        .field { margin-bottom: 18px; }
+
+        .field-label {
+            display: block;
+            font-size: 0.55rem;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            color: var(--text2);
+            margin-bottom: 7px;
+        }
+
+        input[type="text"], input[type="password"] {
+            width: 100%;
+            background: #00010a;
+            border: 1px solid var(--rim2);
+            color: var(--text);
+            padding: 11px 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        input:focus {
+            border-color: var(--neon);
+            box-shadow: inset 0 0 8px rgba(0,245,255,0.04), 0 0 12px rgba(0,245,255,0.15);
+        }
+
+        input::placeholder { color: var(--text2); font-size: 0.75rem; }
+
+        /* Submit button */
+        .submit-btn {
+            width: 100%;
+            padding: 13px;
+            background: transparent;
+            border: 1px solid var(--neon);
+            color: var(--neon);
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 5px;
+            text-transform: uppercase;
+            cursor: pointer;
+            margin-top: 8px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.25s;
+        }
+
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0,245,255,0.08), transparent);
+            transition: left 0.5s;
+        }
+
+        .submit-btn:hover::before { left: 100%; }
+        .submit-btn:hover {
+            background: rgba(0,245,255,0.06);
+            box-shadow: 0 0 20px rgba(0,245,255,0.25), inset 0 0 20px rgba(0,245,255,0.03);
+        }
+
+        /* Error */
+        .error-box {
+            background: rgba(255,56,96,0.06);
+            border: 1px solid rgba(255,56,96,0.25);
+            color: var(--fire);
+            padding: 9px 14px;
+            font-size: 0.7rem;
+            letter-spacing: 1px;
+            margin-bottom: 18px;
+            text-align: center;
+        }
+
+        /* Footer */
+        .card-footer {
+            text-align: center;
+            margin-top: 28px;
+            font-size: 0.55rem;
+            color: var(--text2);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            opacity: 0.6;
+        }
+
+        /* Typing animation for status */
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            justify-content: center;
+            margin-bottom: 36px;
+        }
+
+        .s-dot {
+            width: 5px; height: 5px;
+            background: var(--neon);
+            border-radius: 50%;
+            box-shadow: 0 0 6px var(--neon);
+            animation: blink 1.4s ease infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+
+        .s-text {
+            font-size: 0.58rem;
+            letter-spacing: 3px;
+            color: var(--neon);
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sweep"></div>
+    <div class="bracket br-tl"></div>
+    <div class="bracket br-tr"></div>
+    <div class="bracket br-bl"></div>
+    <div class="bracket br-br"></div>
+    <div class="side-text">NetSentinel IDS &nbsp;/&nbsp; Authorized Access Only &nbsp;/&nbsp; v1.0</div>
+
+    <div class="card">
+        <div class="card-inner">
+            <div class="cut-tl"></div>
+            <div class="cut-br"></div>
+
+            <div class="logo-area">
+                <div class="logo-ring">
+                    <span class="logo-emoji">🛡</span>
+                </div>
+                <span class="logo-name">NETSENTINEL</span>
+                <span class="logo-sub">Intrusion Detection System</span>
+            </div>
+
+            <div class="status-row">
+                <div class="s-dot"></div>
+                <span class="s-text">System Online — Auth Required</span>
+            </div>
+
+            {% if error %}
+            <div class="error-box">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST">
+                <div class="field">
+                    <label class="field-label">// Operator ID</label>
+                    <input type="text" name="username" placeholder="Enter username" required autofocus autocomplete="off">
+                </div>
+                <div class="field">
+                    <label class="field-label">// Access Key</label>
+                    <input type="password" name="password" placeholder="••••••••••••" required>
+                </div>
+                <button type="submit" class="submit-btn">Authenticate →</button>
+            </form>
+
+            <div class="card-footer">
+                Unauthorized access is prohibited &nbsp;|&nbsp; All activity is logged
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

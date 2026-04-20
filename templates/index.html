@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetSentinel IDS</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@300;400;500&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --void: #00010a;
+            --deep: #010714;
+            --panel: #020c1a;
+            --panel2: #041020;
+            --rim: #0d2136;
+            --rim2: #143352;
+            --neon: #00f5ff;
+            --neon2: #00ff41;
+            --fire: #ff3860;
+            --amber: #ffaa00;
+            --purple: #bd00ff;
+            --dim: #1e4060;
+            --muted: #2a5a7a;
+            --text: #a8d8f0;
+            --text2: #3d6b88;
+            --text3: #1f4460;
+            --glow-neon: 0 0 8px #00f5ff, 0 0 20px rgba(0,245,255,0.3);
+            --glow-fire: 0 0 8px #ff3860, 0 0 20px rgba(255,56,96,0.3);
+            --glow-green: 0 0 8px #00ff41, 0 0 20px rgba(0,255,65,0.3);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: var(--void);
+            color: var(--text);
+            font-family: 'Exo 2', sans-serif;
+            font-weight: 400;
+            min-height: 100vh;
+            cursor: crosshair;
+            overflow-x: hidden;
+        }
+
+        .hex-bg {
+            position: fixed;
+            inset: 0;
+            opacity: 0.4;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zm0-2.31L54 50V17.31L28 2.31 2 17.31V50L28 63.69z' fill='none' stroke='%23041020' stroke-width='1'/%3E%3C/svg%3E");
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .scanlines {
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        @keyframes sweep { from { transform: translateY(-100vh); } to { transform: translateY(100vh); } }
+        .sweep-line {
+            position: fixed;
+            left: 0; top: 0;
+            width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(0,245,255,0.15), transparent);
+            animation: sweep 8s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .radar-bg {
+            position: fixed;
+            top: -30vh; right: -20vw;
+            width: 80vh; height: 80vh;
+            border-radius: 50%;
+            border: 1px solid rgba(0,245,255,0.04);
+            pointer-events: none;
+            z-index: 0;
+        }
+        .radar-bg::before, .radar-bg::after {
+            content: '';
+            position: absolute;
+            inset: 15%;
+            border-radius: 50%;
+            border: 1px solid rgba(0,245,255,0.04);
+        }
+        .radar-bg::after { inset: 35%; }
+
+        .shell { position: relative; z-index: 1; display: grid; grid-template-rows: auto 1fr; min-height: 100vh; }
+
+        /* ===== TOPNAV ===== */
+        .topnav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 32px;
+            height: 64px;
+            background: rgba(2,12,26,0.95);
+            border-bottom: 1px solid var(--rim);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .topnav::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0;
+            width: 100%; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--neon), var(--purple), transparent);
+            opacity: 0.4;
+        }
+
+        .nav-brand { display: flex; align-items: center; gap: 16px; }
+
+        .shield { position: relative; width: 40px; height: 40px; }
+        .shield-ring {
+            position: absolute; inset: 0;
+            border: 1px solid var(--neon);
+            border-radius: 50%;
+            animation: spin 8s linear infinite;
+            opacity: 0.4;
+        }
+        .shield-ring::before {
+            content: '';
+            position: absolute;
+            top: -3px; left: 50%;
+            width: 6px; height: 6px;
+            background: var(--neon);
+            border-radius: 50%;
+            transform: translateX(-50%);
+            box-shadow: var(--glow-neon);
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .shield-core {
+            position: absolute; inset: 8px;
+            background: rgba(0,245,255,0.05);
+            border: 1px solid rgba(0,245,255,0.3);
+            clip-path: polygon(50% 0%, 100% 30%, 100% 70%, 50% 100%, 0% 70%, 0% 30%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px;
+        }
+
+        .brand-text {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem; font-weight: 800;
+            letter-spacing: 5px;
+            color: var(--neon);
+            text-shadow: var(--glow-neon);
+        }
+        .brand-sub { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; color: var(--text2); letter-spacing: 3px; margin-top: 2px; }
+
+        .nav-center { display: flex; gap: 2px; }
+        .nav-tab {
+            padding: 8px 20px;
+            background: transparent; border: none;
+            color: var(--text2);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem; letter-spacing: 2px;
+            cursor: pointer; text-transform: uppercase;
+            transition: all 0.2s; text-decoration: none;
+            display: inline-block; position: relative;
+        }
+        .nav-tab::after {
+            content: ''; position: absolute;
+            bottom: 0; left: 50%;
+            width: 0; height: 1px;
+            background: var(--neon);
+            transition: all 0.2s; transform: translateX(-50%);
+        }
+        .nav-tab:hover { color: var(--neon); }
+        .nav-tab:hover::after { width: 80%; }
+
+        .nav-right { display: flex; align-items: center; gap: 12px; }
+
+        .live-pill {
+            display: flex; align-items: center; gap: 7px;
+            padding: 5px 12px;
+            border: 1px solid rgba(0,255,65,0.3);
+            background: rgba(0,255,65,0.05);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem; letter-spacing: 2px;
+            color: var(--neon2); text-transform: uppercase;
+        }
+        .live-dot {
+            width: 6px; height: 6px;
+            background: var(--neon2); border-radius: 50%;
+            animation: livepulse 1.2s ease-in-out infinite;
+            box-shadow: var(--glow-green);
+        }
+        @keyframes livepulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: 0.6; } }
+
+        .btn-nav {
+            padding: 7px 16px; background: transparent;
+            border: 1px solid var(--rim2);
+            color: var(--text2);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem; letter-spacing: 2px;
+            cursor: pointer; text-transform: uppercase;
+            text-decoration: none; display: inline-flex;
+            align-items: center; gap: 6px; transition: all 0.2s;
+        }
+        .btn-nav:hover { border-color: var(--neon); color: var(--neon); box-shadow: var(--glow-neon); }
+        .btn-nav.danger:hover { border-color: var(--fire); color: var(--fire); box-shadow: var(--glow-fire); }
+
+        /* ===== MAIN ===== */
+        .main { padding: 28px 32px 60px; }
+
+        .s-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .s-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; letter-spacing: 4px; text-transform: uppercase; color: var(--text2); }
+        .s-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--rim2), transparent); }
+        .s-tag { font-family: 'IBM Plex Mono', monospace; font-size: 0.55rem; color: var(--text3); letter-spacing: 2px; }
+
+        /* ===== STATS ===== */
+        .stats-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 24px; }
+
+        .stat {
+            background: var(--panel); border: 1px solid var(--rim);
+            padding: 20px 22px; position: relative; overflow: hidden;
+            transition: border-color 0.3s, transform 0.2s;
+        }
+        .stat:hover { transform: translateY(-2px); }
+
+        .stat::before { content: ''; position: absolute; top: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 16px 16px 0; }
+        .stat::after { content: ''; position: absolute; bottom: 0; left: 0; width: 40%; height: 1px; }
+
+        .stat.s-fire { border-color: rgba(255,56,96,0.2); }
+        .stat.s-fire::before { border-color: transparent var(--fire) transparent transparent; }
+        .stat.s-fire::after { background: var(--fire); }
+        .stat.s-fire:hover { border-color: rgba(255,56,96,0.5); box-shadow: 0 0 20px rgba(255,56,96,0.1); }
+
+        .stat.s-amber { border-color: rgba(255,170,0,0.2); }
+        .stat.s-amber::before { border-color: transparent var(--amber) transparent transparent; }
+        .stat.s-amber::after { background: var(--amber); }
+        .stat.s-amber:hover { border-color: rgba(255,170,0,0.5); box-shadow: 0 0 20px rgba(255,170,0,0.1); }
+
+        .stat.s-neon { border-color: rgba(0,245,255,0.2); }
+        .stat.s-neon::before { border-color: transparent var(--neon) transparent transparent; }
+        .stat.s-neon::after { background: var(--neon); }
+        .stat.s-neon:hover { border-color: rgba(0,245,255,0.5); box-shadow: 0 0 20px rgba(0,245,255,0.1); }
+
+        .stat.s-green { border-color: rgba(0,255,65,0.2); }
+        .stat.s-green::before { border-color: transparent var(--neon2) transparent transparent; }
+        .stat.s-green::after { background: var(--neon2); }
+        .stat.s-green:hover { border-color: rgba(0,255,65,0.5); box-shadow: 0 0 20px rgba(0,255,65,0.1); }
+
+        .stat-key { font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; letter-spacing: 3px; text-transform: uppercase; color: var(--text2); margin-bottom: 12px; }
+        .stat-num { font-family: 'Orbitron', sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+        .stat.s-fire .stat-num { color: var(--fire); text-shadow: var(--glow-fire); }
+        .stat.s-amber .stat-num { color: var(--amber); text-shadow: 0 0 15px rgba(255,170,0,0.4); }
+        .stat.s-neon .stat-num { color: var(--neon); text-shadow: var(--glow-neon); }
+        .stat.s-green .stat-num { color: var(--neon2); text-shadow: var(--glow-green); }
+        .stat-desc { font-size: 0.7rem; color: var(--text3); letter-spacing: 1px; }
+
+        /* ===== GRID ===== */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+        /* ===== PANEL ===== */
+        .panel {
+            background: var(--panel); border: 1px solid var(--rim);
+            padding: 22px; margin-bottom: 16px; position: relative;
+        }
+        .panel::before {
+            content: ''; position: absolute;
+            top: -1px; left: -1px;
+            width: 20px; height: 20px;
+            border-top: 2px solid var(--neon);
+            border-left: 2px solid var(--neon);
+            opacity: 0.5;
+        }
+
+        /* ===== RADAR CHART specific ===== */
+        .radar-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px 0;
+        }
+
+        /* ===== TABLE ===== */
+        .tbl-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: rgba(13,33,54,0.8); }
+        th {
+            padding: 10px 14px; text-align: left;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--text2);
+            border-bottom: 1px solid var(--rim2); white-space: nowrap;
+        }
+        td {
+            padding: 11px 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            border-bottom: 1px solid rgba(13,33,54,0.8);
+            transition: background 0.15s; color: var(--text);
+        }
+        tr:hover td { background: rgba(0,245,255,0.02); }
+        tr:last-child td { border-bottom: none; }
+        .td-ip { color: var(--neon); letter-spacing: 1px; }
+        .td-time { color: var(--text2); font-size: 0.7rem; }
+
+        /* ===== BADGES ===== */
+        .badge {
+            display: inline-block; padding: 2px 9px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.58rem; letter-spacing: 2px;
+            text-transform: uppercase; border: 1px solid; white-space: nowrap;
+        }
+        .b-crit { color: var(--fire); border-color: rgba(255,56,96,0.4); background: rgba(255,56,96,0.08); }
+        .b-high { color: var(--amber); border-color: rgba(255,170,0,0.4); background: rgba(255,170,0,0.08); }
+        .b-med  { color: var(--neon); border-color: rgba(0,245,255,0.4); background: rgba(0,245,255,0.08); }
+        .b-safe { color: var(--neon2); border-color: rgba(0,255,65,0.4); background: rgba(0,255,65,0.08); }
+
+        .btn-block {
+            padding: 4px 12px; background: transparent;
+            border: 1px solid rgba(255,56,96,0.3);
+            color: var(--fire);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem; letter-spacing: 1px;
+            cursor: pointer; text-transform: uppercase; transition: all 0.2s;
+        }
+        .btn-block:hover { background: rgba(255,56,96,0.1); border-color: var(--fire); box-shadow: var(--glow-fire); }
+
+        /* ===== IP SEARCH ===== */
+        .search-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+        .ip-input {
+            flex: 1; background: var(--panel2);
+            border: 1px solid var(--rim2);
+            color: var(--text); padding: 10px 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem; outline: none;
+            transition: all 0.2s; letter-spacing: 1px;
+        }
+        .ip-input:focus { border-color: var(--neon); box-shadow: inset 0 0 10px rgba(0,245,255,0.05), var(--glow-neon); }
+        .ip-input::placeholder { color: var(--text3); }
+        .btn-locate {
+            padding: 10px 20px; background: transparent;
+            border: 1px solid var(--neon); color: var(--neon);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem; letter-spacing: 2px;
+            cursor: pointer; text-transform: uppercase;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .btn-locate:hover { background: rgba(0,245,255,0.08); box-shadow: var(--glow-neon); }
+
+        #map-frame {
+            width: 100%; height: 340px; border: none;
+            border: 1px solid var(--rim); margin-bottom: 16px;
+            filter: saturate(0.3) brightness(0.6) hue-rotate(160deg);
+        }
+
+        .empty { text-align: center; padding: 48px 20px; color: var(--text3); font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; letter-spacing: 2px; }
+
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        .stat { animation: fadeUp 0.5s ease both; }
+        .stat:nth-child(1) { animation-delay: 0.05s; }
+        .stat:nth-child(2) { animation-delay: 0.1s; }
+        .stat:nth-child(3) { animation-delay: 0.15s; }
+        .stat:nth-child(4) { animation-delay: 0.2s; }
+        .panel { animation: fadeUp 0.5s ease 0.2s both; }
+
+        @keyframes alertFlash { 0% { background: rgba(255,56,96,0.12); } 100% { background: transparent; } }
+        .row-new td { animation: alertFlash 1.5s ease; }
+
+        ::-webkit-scrollbar { width: 3px; height: 3px; }
+        ::-webkit-scrollbar-track { background: var(--void); }
+        ::-webkit-scrollbar-thumb { background: var(--rim2); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--neon); }
+
+        @media (max-width: 900px) {
+            .stats-row { grid-template-columns: repeat(2,1fr); }
+            .grid-2 { grid-template-columns: 1fr; }
+            .nav-center { display: none; }
+            .main { padding: 20px 16px 40px; }
+            .topnav { padding: 0 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hex-bg"></div>
+    <div class="scanlines"></div>
+    <div class="sweep-line"></div>
+    <div class="radar-bg"></div>
+
+    <div class="shell">
+
+        <nav class="topnav">
+            <div class="nav-brand">
+                <div class="shield">
+                    <div class="shield-ring"></div>
+                    <div class="shield-core">🛡</div>
+                </div>
+                <div>
+                    <div class="brand-text">NETSENTINEL</div>
+                    <div class="brand-sub">INTRUSION DETECTION SYSTEM</div>
+                </div>
+            </div>
+
+            <div class="nav-center">
+                <a href="/" class="nav-tab">Dashboard</a>
+                <a href="/stats" class="nav-tab">Analytics</a>
+            </div>
+
+            <div class="nav-right">
+                <div class="live-pill"><div class="live-dot"></div>Live</div>
+                <a href="/api/export/pdf" class="btn-nav">↓ Export</a>
+                <button class="btn-nav" onclick="clearAlerts()">⊘ Clear</button>
+                <a href="/logout" class="btn-nav danger">⏻ Exit</a>
+            </div>
+        </nav>
+
+        <main class="main">
+
+            <div class="s-head" style="margin-bottom:12px;">
+                <span class="s-label">System Status</span>
+                <div class="s-line"></div>
+                <span class="s-tag" id="clock">--:--:--</span>
+            </div>
+
+            <div class="stats-row">
+                <div class="stat s-fire">
+                    <div class="stat-key">Critical Alerts</div>
+                    <div class="stat-num" id="critical-count">0</div>
+                    <div class="stat-desc">Immediate action required</div>
+                </div>
+                <div class="stat s-amber">
+                    <div class="stat-key">High Severity</div>
+                    <div class="stat-num" id="high-count">0</div>
+                    <div class="stat-desc">Potential threats</div>
+                </div>
+                <div class="stat s-neon">
+                    <div class="stat-key">Total Events</div>
+                    <div class="stat-num" id="total-count">0</div>
+                    <div class="stat-desc">All logged alerts</div>
+                </div>
+                <div class="stat s-green">
+                    <div class="stat-key">WiFi Networks</div>
+                    <div class="stat-num" id="wifi-count">0</div>
+                    <div class="stat-desc">Detected in range</div>
+                </div>
+            </div>
+
+            <!-- Charts row -->
+            <div class="grid-2">
+                <div class="panel">
+                    <div class="s-head">
+                        <span class="s-label">Attack Distribution</span>
+                        <div class="s-line"></div>
+                    </div>
+                    <canvas id="barChart"></canvas>
+                </div>
+                <div class="panel">
+                    <div class="s-head">
+                        <span class="s-label">Attack Vector Radar</span>
+                        <div class="s-line"></div>
+                        <span class="s-tag">Threat Surface</span>
+                    </div>
+                    <div class="radar-wrap">
+                        <canvas id="radarChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alert Table -->
+            <div class="panel">
+                <div class="s-head">
+                    <span class="s-label">Live Alert Feed</span>
+                    <div class="s-line"></div>
+                    <span class="s-tag" id="alert-count-label">0 events</span>
+                </div>
+                <div class="tbl-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Timestamp</th>
+                                <th>Source IP</th>
+                                <th>Attack Vector</th>
+                                <th>Severity</th>
+                                <th>Response</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alert-table">
+                            <tr><td colspan="6" class="empty">No alerts detected — system monitoring</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Geo Panel -->
+            <div class="panel">
+                <div class="s-head">
+                    <span class="s-label">Threat Geolocation</span>
+                    <div class="s-line"></div>
+                    <span class="s-tag">IP Intelligence</span>
+                </div>
+                <div class="search-bar">
+                    <input type="text" id="ip-search" class="ip-input" placeholder="Enter target IP — e.g. 8.8.8.8">
+                    <button class="btn-locate" onclick="searchIP()">◎ Locate</button>
+                </div>
+                <iframe id="map-frame" src="https://www.openstreetmap.org/export/embed.html?bbox=-180,-90,180,90&layer=mapnik"></iframe>
+                <div class="tbl-wrap">
+                    <table>
+                        <thead><tr><th>IP Address</th><th>City</th><th>Country</th><th>ISP / Org</th></tr></thead>
+                        <tbody id="location-table">
+                            <tr><td colspan="4" class="empty">No IP locations tracked</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- WiFi Scanner -->
+            <div class="panel">
+                <div class="s-head">
+                    <span class="s-label">WiFi Threat Scanner</span>
+                    <div class="s-line"></div>
+                    <span class="s-tag">NodeMCU ESP8266</span>
+                </div>
+                <div class="tbl-wrap">
+                    <table>
+                        <thead><tr><th>Network SSID</th><th>Signal</th><th>Encryption</th><th>Threat</th><th>Risk Level</th></tr></thead>
+                        <tbody id="wifi-table">
+                            <tr><td colspan="5" class="empty">Waiting for NodeMCU sensor data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent =
+                now.toLocaleTimeString('en-GB', { hour12: false }) + ' UTC+' + (-now.getTimezoneOffset()/60);
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // ===== BAR CHART =====
+        const barCtx = document.getElementById('barChart').getContext('2d');
+        const barChart = new Chart(barCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Port Scan', 'DDoS', 'ARP Spoof'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: ['rgba(255,170,0,0.15)', 'rgba(255,56,96,0.15)', 'rgba(0,245,255,0.15)'],
+                    borderColor: ['#ffaa00', '#ff3860', '#00f5ff'],
+                    borderWidth: 1,
+                    borderRadius: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { color: '#3d6b88', font: { family: 'IBM Plex Mono', size: 10 } }, grid: { color: 'rgba(13,33,54,0.8)' } },
+                    y: { ticks: { color: '#3d6b88', font: { family: 'IBM Plex Mono', size: 10 } }, grid: { color: 'rgba(13,33,54,0.8)' } }
+                }
+            }
+        });
+
+        // ===== RADAR CHART =====
+        const radarCtx = document.getElementById('radarChart').getContext('2d');
+        const radarChart = new Chart(radarCtx, {
+            type: 'radar',
+            data: {
+                labels: ['Port Scan', 'DDoS', 'ARP Spoof', 'Evil Twin', 'Open Net', 'Unknown'],
+                datasets: [{
+                    label: 'Threat Level',
+                    data: [0, 0, 0, 0, 0, 0],
+                    backgroundColor: 'rgba(0, 245, 255, 0.07)',
+                    borderColor: '#00f5ff',
+                    borderWidth: 1.5,
+                    pointBackgroundColor: '#00f5ff',
+                    pointBorderColor: '#00f5ff',
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    pointShadowBlur: 10,
+                }, {
+                    label: 'Critical',
+                    data: [0, 0, 0, 0, 0, 0],
+                    backgroundColor: 'rgba(255, 56, 96, 0.07)',
+                    borderColor: '#ff3860',
+                    borderWidth: 1.5,
+                    pointBackgroundColor: '#ff3860',
+                    pointBorderColor: '#ff3860',
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    r: {
+                        min: 0,
+                        ticks: {
+                            color: '#1f4460',
+                            backdropColor: 'transparent',
+                            font: { family: 'IBM Plex Mono', size: 9 },
+                            stepSize: 1,
+                        },
+                        grid: { color: 'rgba(13, 33, 54, 0.9)' },
+                        angleLines: { color: 'rgba(20, 51, 82, 0.6)' },
+                        pointLabels: {
+                            color: '#3d6b88',
+                            font: { family: 'IBM Plex Mono', size: 10 }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#3d6b88',
+                            font: { family: 'IBM Plex Mono', size: 10 },
+                            boxWidth: 10,
+                            padding: 16,
+                        }
+                    }
+                }
+            }
+        });
+
+        // ===== IP LOCATION =====
+        let locatedIPs = new Set();
+        let geoEmpty = true;
+
+        function fetchLocation(ip) {
+            if (!ip || ip === '127.0.0.1' || ip.startsWith('192.168') || ip.startsWith('10.') || ip.startsWith('172.')) return;
+            if (locatedIPs.has(ip)) return;
+            locatedIPs.add(ip);
+            fetch(`/api/location/${ip}`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.error || !d.lat) return;
+                    document.getElementById('map-frame').src =
+                        `https://www.openstreetmap.org/export/embed.html?bbox=${d.lon-4},${d.lat-4},${d.lon+4},${d.lat+4}&layer=mapnik&marker=${d.lat},${d.lon}`;
+                    if (geoEmpty) { document.getElementById('location-table').innerHTML = ''; geoEmpty = false; }
+                    document.getElementById('location-table').innerHTML +=
+                        `<tr><td class="td-ip">${d.ip}</td><td>${d.city}</td><td>${d.country}</td><td style="color:var(--text2)">${d.isp}</td></tr>`;
+                });
+        }
+
+        function searchIP() {
+            const ip = document.getElementById('ip-search').value.trim();
+            if (!ip) return;
+            fetch(`/api/location/${ip}`)
+                .then(r => r.json())
+                .then(d => {
+                    if (d.error || !d.lat) { alert('Could not locate IP'); return; }
+                    document.getElementById('map-frame').src =
+                        `https://www.openstreetmap.org/export/embed.html?bbox=${d.lon-4},${d.lat-4},${d.lon+4},${d.lat+4}&layer=mapnik&marker=${d.lat},${d.lon}`;
+                    if (geoEmpty) { document.getElementById('location-table').innerHTML = ''; geoEmpty = false; }
+                    document.getElementById('location-table').innerHTML =
+                        `<tr style="background:rgba(0,245,255,0.04)"><td class="td-ip">${d.ip}</td><td>${d.city}</td><td>${d.country}</td><td style="color:var(--text2)">${d.isp}</td></tr>`
+                        + document.getElementById('location-table').innerHTML;
+                    document.getElementById('ip-search').value = '';
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('ip-search').addEventListener('keypress', e => { if (e.key === 'Enter') searchIP(); });
+        });
+
+        // ===== ALERTS =====
+        let prevCount = 0;
+
+        function fetchAlerts() {
+            fetch('/api/alerts')
+                .then(r => r.json())
+                .then(alerts => {
+                    let critical = 0, high = 0, portScan = 0, ddos = 0, arp = 0;
+                    let html = '';
+
+                    if (!alerts.length) {
+                        html = `<tr><td colspan="6" class="empty">No alerts detected — system monitoring</td></tr>`;
+                    }
+
+                    alerts.forEach((a, i) => {
+                        fetchLocation(a.src_ip);
+                        if (a.severity === 'Critical') critical++;
+                        if (a.severity === 'High') high++;
+                        if (a.attack_type === 'Port Scan') portScan++;
+                        if (a.attack_type === 'DDoS Attempt') ddos++;
+                        if (a.attack_type === 'ARP Spoofing (MITM)') arp++;
+
+                        const bc = a.severity === 'Critical' ? 'b-crit' : 'b-high';
+                        const isNew = alerts.length > prevCount && i === 0 ? 'row-new' : '';
+                        html += `<tr class="${isNew}">
+                            <td style="color:var(--text2);font-size:0.65rem">${a.id}</td>
+                            <td class="td-time">${a.timestamp}</td>
+                            <td class="td-ip">${a.src_ip}</td>
+                            <td>${a.attack_type}</td>
+                            <td><span class="badge ${bc}">${a.severity}</span></td>
+                            <td><button class="btn-block" onclick="blockIP('${a.src_ip}')">Block</button></td>
+                        </tr>`;
+                    });
+
+                    prevCount = alerts.length;
+                    document.getElementById('critical-count').textContent = critical;
+                    document.getElementById('high-count').textContent = high;
+                    document.getElementById('total-count').textContent = alerts.length;
+                    document.getElementById('alert-count-label').textContent = alerts.length + ' events';
+
+                    // Update bar chart
+                    barChart.data.datasets[0].data = [portScan, ddos, arp];
+                    barChart.update();
+
+                    // Update radar chart with all threat vectors
+                    radarChart.data.datasets[0].data = [portScan, ddos, arp, 0, 0, 0];
+                    radarChart.data.datasets[1].data = [
+                        critical > 0 ? Math.ceil(critical * portScan / alerts.length || 0) : 0,
+                        critical > 0 ? Math.ceil(critical * ddos / alerts.length || 0) : 0,
+                        critical > 0 ? Math.ceil(critical * arp / alerts.length || 0) : 0,
+                        0, 0, 0
+                    ];
+                    radarChart.update();
+
+                    document.getElementById('alert-table').innerHTML = html;
+                });
+        }
+
+        // Update radar with wifi data too
+        function updateRadarWifi(openNets, evilTwin) {
+            radarChart.data.datasets[0].data[3] = evilTwin;
+            radarChart.data.datasets[0].data[4] = openNets;
+            radarChart.update();
+        }
+
+        function clearAlerts() {
+            if (!confirm('Clear all alerts from database?')) return;
+            fetch('/api/clear', { method: 'POST' }).then(() => { fetchAlerts(); });
+        }
+
+        function blockIP(ip) {
+            if (!confirm(`Block ${ip}?`)) return;
+            fetch('/api/block', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip })
+            }).then(r => r.json()).then(d => {
+                alert(d.status === 'blocked' ? `✅ ${ip} blocked` : `❌ ${d.message}`);
+            });
+        }
+
+        // ===== WIFI =====
+        function fetchWifi() {
+            fetch('/api/wifi/data')
+                .then(r => r.json())
+                .then(nets => {
+                    document.getElementById('wifi-count').textContent = nets.length;
+
+                    // Feed WiFi data into radar
+                    const openNets = nets.filter(n => n.open).length;
+                    const evilTwin = nets.filter(n => n.threat === 'Possible Evil Twin Attack').length;
+                    updateRadarWifi(openNets, evilTwin);
+
+                    if (!nets.length) {
+                        document.getElementById('wifi-table').innerHTML =
+                            '<tr><td colspan="5" class="empty">Waiting for NodeMCU sensor data...</td></tr>';
+                        return;
+                    }
+                    document.getElementById('wifi-table').innerHTML = nets.map(n => {
+                        const bc = n.severity === 'High' ? 'b-crit' : n.severity === 'Medium' ? 'b-med' : 'b-safe';
+                        return `<tr>
+                            <td style="color:var(--neon)">${n.ssid}</td>
+                            <td>${n.rssi} dBm</td>
+                            <td>${n.open ? '🔓 Open' : '🔒 WPA'}</td>
+                            <td>${n.threat}</td>
+                            <td><span class="badge ${bc}">${n.severity}</span></td>
+                        </tr>`;
+                    }).join('');
+                });
+        }
+
+        fetchAlerts();
+        fetchWifi();
+        setInterval(fetchAlerts, 5000);
+        setInterval(fetchWifi, 10000);
+    </script>
+</body>
+</html>

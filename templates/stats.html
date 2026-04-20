@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NetSentinel — Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@300;400;500&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --void: #00010a;
+            --panel: #020c1a;
+            --panel2: #041020;
+            --rim: #0d2136;
+            --rim2: #143352;
+            --neon: #00f5ff;
+            --neon2: #00ff41;
+            --fire: #ff3860;
+            --amber: #ffaa00;
+            --purple: #bd00ff;
+            --text: #a8d8f0;
+            --text2: #3d6b88;
+            --text3: #1f4460;
+            --glow-neon: 0 0 8px #00f5ff, 0 0 20px rgba(0,245,255,0.3);
+            --glow-fire: 0 0 8px #ff3860, 0 0 20px rgba(255,56,96,0.3);
+            --glow-green: 0 0 8px #00ff41, 0 0 20px rgba(0,255,65,0.3);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: var(--void);
+            color: var(--text);
+            font-family: 'Exo 2', sans-serif;
+            min-height: 100vh;
+            cursor: crosshair;
+            overflow-x: hidden;
+        }
+
+        .hex-bg {
+            position: fixed; inset: 0; opacity: 0.4;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100'%3E%3Cpath d='M28 66L0 50V16L28 0l28 16v34L28 66zm0-2.31L54 50V17.31L28 2.31 2 17.31V50L28 63.69z' fill='none' stroke='%23041020' stroke-width='1'/%3E%3C/svg%3E");
+            pointer-events: none; z-index: 0;
+        }
+
+        .scanlines {
+            position: fixed; inset: 0;
+            background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px);
+            pointer-events: none; z-index: 0;
+        }
+
+        @keyframes sweep { from { transform: translateY(-100vh); } to { transform: translateY(100vh); } }
+        .sweep-line {
+            position: fixed; left: 0; top: 0;
+            width: 100%; height: 2px;
+            background: linear-gradient(90deg, transparent, rgba(0,245,255,0.15), transparent);
+            animation: sweep 8s linear infinite;
+            pointer-events: none; z-index: 0;
+        }
+
+        .shell { position: relative; z-index: 1; }
+
+        /* ===== TOPNAV ===== */
+        .topnav {
+            display: flex; align-items: center;
+            justify-content: space-between;
+            padding: 0 32px; height: 64px;
+            background: rgba(2,12,26,0.95);
+            border-bottom: 1px solid var(--rim);
+            backdrop-filter: blur(10px);
+            position: sticky; top: 0; z-index: 100;
+        }
+
+        .topnav::after {
+            content: ''; position: absolute;
+            bottom: 0; left: 0; width: 100%; height: 1px;
+            background: linear-gradient(90deg, transparent, var(--neon), var(--purple), transparent);
+            opacity: 0.4;
+        }
+
+        .nav-brand { display: flex; align-items: center; gap: 16px; }
+
+        .shield { position: relative; width: 40px; height: 40px; }
+        .shield-ring {
+            position: absolute; inset: 0;
+            border: 1px solid var(--neon); border-radius: 50%;
+            animation: spin 8s linear infinite; opacity: 0.4;
+        }
+        .shield-ring::before {
+            content: ''; position: absolute;
+            top: -3px; left: 50%;
+            width: 6px; height: 6px;
+            background: var(--neon); border-radius: 50%;
+            transform: translateX(-50%);
+            box-shadow: var(--glow-neon);
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .shield-core {
+            position: absolute; inset: 8px;
+            background: rgba(0,245,255,0.05);
+            border: 1px solid rgba(0,245,255,0.3);
+            clip-path: polygon(50% 0%, 100% 30%, 100% 70%, 50% 100%, 0% 70%, 0% 30%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px;
+        }
+
+        .brand-text {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1rem; font-weight: 800;
+            letter-spacing: 5px; color: var(--neon);
+            text-shadow: var(--glow-neon);
+        }
+        .brand-sub { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; color: var(--text2); letter-spacing: 3px; margin-top: 2px; }
+
+        .nav-right { display: flex; align-items: center; gap: 12px; }
+
+        .btn-nav {
+            padding: 7px 16px; background: transparent;
+            border: 1px solid var(--rim2); color: var(--text2);
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem; letter-spacing: 2px;
+            cursor: pointer; text-transform: uppercase;
+            text-decoration: none; display: inline-flex;
+            align-items: center; gap: 6px; transition: all 0.2s;
+        }
+        .btn-nav:hover { border-color: var(--neon); color: var(--neon); box-shadow: var(--glow-neon); }
+        .btn-nav.danger:hover { border-color: var(--fire); color: var(--fire); box-shadow: var(--glow-fire); }
+
+        /* ===== MAIN ===== */
+        .main { padding: 28px 32px 80px; }
+
+        .s-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .s-label { font-family: 'IBM Plex Mono', monospace; font-size: 0.6rem; letter-spacing: 4px; text-transform: uppercase; color: var(--text2); }
+        .s-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--rim2), transparent); }
+        .s-tag { font-family: 'IBM Plex Mono', monospace; font-size: 0.55rem; color: var(--text3); letter-spacing: 2px; }
+
+        /* ===== STATS ===== */
+        .stats-row { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 24px; }
+
+        .stat {
+            background: var(--panel); border: 1px solid var(--rim);
+            padding: 20px 22px; position: relative; overflow: hidden;
+            transition: border-color 0.3s, transform 0.2s;
+        }
+        .stat:hover { transform: translateY(-2px); }
+        .stat::before { content: ''; position: absolute; top: 0; right: 0; width: 0; height: 0; border-style: solid; border-width: 0 16px 16px 0; }
+        .stat::after { content: ''; position: absolute; bottom: 0; left: 0; width: 40%; height: 1px; }
+
+        .stat.s-fire { border-color: rgba(255,56,96,0.2); }
+        .stat.s-fire::before { border-color: transparent var(--fire) transparent transparent; }
+        .stat.s-fire::after { background: var(--fire); }
+        .stat.s-fire:hover { border-color: rgba(255,56,96,0.5); box-shadow: 0 0 20px rgba(255,56,96,0.1); }
+
+        .stat.s-amber { border-color: rgba(255,170,0,0.2); }
+        .stat.s-amber::before { border-color: transparent var(--amber) transparent transparent; }
+        .stat.s-amber::after { background: var(--amber); }
+        .stat.s-amber:hover { border-color: rgba(255,170,0,0.5); }
+
+        .stat.s-neon { border-color: rgba(0,245,255,0.2); }
+        .stat.s-neon::before { border-color: transparent var(--neon) transparent transparent; }
+        .stat.s-neon::after { background: var(--neon); }
+        .stat.s-neon:hover { border-color: rgba(0,245,255,0.5); box-shadow: 0 0 20px rgba(0,245,255,0.1); }
+
+        .stat-key { font-family: 'IBM Plex Mono', monospace; font-size: 0.58rem; letter-spacing: 3px; text-transform: uppercase; color: var(--text2); margin-bottom: 12px; }
+        .stat-num { font-family: 'Orbitron', sans-serif; font-size: 2.6rem; font-weight: 700; line-height: 1; margin-bottom: 6px; }
+        .stat.s-fire .stat-num { color: var(--fire); text-shadow: var(--glow-fire); }
+        .stat.s-amber .stat-num { color: var(--amber); }
+        .stat.s-neon .stat-num { color: var(--neon); text-shadow: var(--glow-neon); }
+        .stat-desc { font-size: 0.7rem; color: var(--text3); }
+
+        /* ===== GRID ===== */
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+
+        /* ===== PANEL ===== */
+        .panel {
+            background: var(--panel); border: 1px solid var(--rim);
+            padding: 22px; margin-bottom: 16px; position: relative;
+        }
+        .panel::before {
+            content: ''; position: absolute;
+            top: -1px; left: -1px;
+            width: 20px; height: 20px;
+            border-top: 2px solid var(--neon);
+            border-left: 2px solid var(--neon);
+            opacity: 0.5;
+        }
+
+        /* ===== TABLE ===== */
+        .tbl-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: rgba(13,33,54,0.8); }
+        th {
+            padding: 10px 14px; text-align: left;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem; letter-spacing: 3px;
+            text-transform: uppercase; color: var(--text2);
+            border-bottom: 1px solid var(--rim2);
+        }
+        td {
+            padding: 11px 14px;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            border-bottom: 1px solid rgba(13,33,54,0.8);
+            color: var(--text);
+        }
+        tr:hover td { background: rgba(0,245,255,0.02); }
+        tr:last-child td { border-bottom: none; }
+
+        .td-ip { color: var(--neon); letter-spacing: 1px; }
+        .td-rank { color: var(--text2); }
+
+        /* ===== FOOTER ===== */
+        .footer {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: rgba(2,12,26,0.95);
+            border-top: 1px solid var(--rim);
+            padding: 10px 32px;
+            text-align: center;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem; color: var(--text2);
+            letter-spacing: 2px; z-index: 100;
+        }
+
+        ::-webkit-scrollbar { width: 3px; height: 3px; }
+        ::-webkit-scrollbar-track { background: var(--void); }
+        ::-webkit-scrollbar-thumb { background: var(--rim2); }
+        ::-webkit-scrollbar-thumb:hover { background: var(--neon); }
+
+        @media (max-width: 900px) {
+            .stats-row { grid-template-columns: repeat(2,1fr); }
+            .grid-2 { grid-template-columns: 1fr; }
+            .main { padding: 20px 16px 80px; }
+            .topnav { padding: 0 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hex-bg"></div>
+    <div class="scanlines"></div>
+    <div class="sweep-line"></div>
+
+    <div class="shell">
+
+        <!-- Topnav -->
+        <nav class="topnav">
+            <div class="nav-brand">
+                <div class="shield">
+                    <div class="shield-ring"></div>
+                    <div class="shield-core">🛡</div>
+                </div>
+                <div>
+                    <div class="brand-text">NETSENTINEL</div>
+                    <div class="brand-sub">ANALYTICS & STATISTICS</div>
+                </div>
+            </div>
+            <div class="nav-right">
+                <a href="/" class="btn-nav">← Dashboard</a>
+                <a href="/logout" class="btn-nav danger">⏻ Exit</a>
+            </div>
+        </nav>
+
+        <main class="main">
+
+            <!-- Section header -->
+            <div class="s-head" style="margin-bottom:20px;">
+                <span class="s-label">Threat Analysis</span>
+                <div class="s-line"></div>
+                <span class="s-tag" id="clock">--:--:--</span>
+            </div>
+
+            <!-- Stats cards -->
+            <div class="stats-row">
+                <div class="stat s-neon">
+                    <div class="stat-key">Total Alerts</div>
+                    <div class="stat-num" id="total-count">0</div>
+                    <div class="stat-desc">All logged events</div>
+                </div>
+                <div class="stat s-fire">
+                    <div class="stat-key">Critical</div>
+                    <div class="stat-num" id="critical-count">0</div>
+                    <div class="stat-desc">Immediate threats</div>
+                </div>
+                <div class="stat s-amber">
+                    <div class="stat-key">High</div>
+                    <div class="stat-num" id="high-count">0</div>
+                    <div class="stat-desc">Potential threats</div>
+                </div>
+            </div>
+
+            <!-- Charts row -->
+            <div class="grid-2">
+                <div class="panel">
+                    <div class="s-head">
+                        <span class="s-label">Alerts by Attack Type</span>
+                        <div class="s-line"></div>
+                    </div>
+                    <canvas id="typeChart"></canvas>
+                </div>
+                <div class="panel">
+                    <div class="s-head">
+                        <span class="s-label">Alerts by Severity</span>
+                        <div class="s-line"></div>
+                    </div>
+                    <canvas id="severityChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Hourly chart -->
+            <div class="panel">
+                <div class="s-head">
+                    <span class="s-label">Alerts by Hour of Day</span>
+                    <div class="s-line"></div>
+                    <span class="s-tag">24h Distribution</span>
+                </div>
+                <canvas id="hourChart" height="80"></canvas>
+            </div>
+
+            <!-- Top IPs -->
+            <div class="panel">
+                <div class="s-head">
+                    <span class="s-label">Top Attacker IPs</span>
+                    <div class="s-line"></div>
+                    <span class="s-tag">Max 5</span>
+                </div>
+                <div class="tbl-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>IP Address</th>
+                                <th>Total Attacks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="top-ips-table">
+                            <tr><td colspan="3" style="text-align:center;padding:30px;color:var(--text3)">No data yet</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        © 2025 praanishh (0xPRX) &nbsp;|&nbsp; MIT License &nbsp;|&nbsp; NetSentinel IDS
+    </div>
+
+    <script>
+        // Clock
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').textContent =
+                now.toLocaleTimeString('en-GB', { hour12: false });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Load stats
+        fetch('/api/stats')
+            .then(r => r.json())
+            .then(data => {
+
+                // Cards
+                document.getElementById('total-count').textContent = data.total || 0;
+                (data.by_severity || []).forEach(s => {
+                    if (s.severity === 'Critical') document.getElementById('critical-count').textContent = s.count;
+                    if (s.severity === 'High') document.getElementById('high-count').textContent = s.count;
+                });
+
+                // Attack Type chart
+                new Chart(document.getElementById('typeChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: (data.by_type || []).map(t => t.type),
+                        datasets: [{
+                            data: (data.by_type || []).map(t => t.count),
+                            backgroundColor: ['rgba(255,170,0,0.6)', 'rgba(255,56,96,0.6)', 'rgba(0,245,255,0.6)', 'rgba(189,0,255,0.6)'],
+                            borderColor: ['#ffaa00', '#ff3860', '#00f5ff', '#bd00ff'],
+                            borderWidth: 1,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        cutout: '60%',
+                        plugins: {
+                            legend: { labels: { color: '#3d6b88', font: { family: 'IBM Plex Mono', size: 10 }, boxWidth: 10 } }
+                        }
+                    }
+                });
+
+                // Severity chart
+                new Chart(document.getElementById('severityChart'), {
+                    type: 'pie',
+                    data: {
+                        labels: (data.by_severity || []).map(s => s.severity),
+                        datasets: [{
+                            data: (data.by_severity || []).map(s => s.count),
+                            backgroundColor: ['rgba(255,56,96,0.6)', 'rgba(255,170,0,0.6)', 'rgba(0,255,65,0.6)'],
+                            borderColor: ['#ff3860', '#ffaa00', '#00ff41'],
+                            borderWidth: 1,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { labels: { color: '#3d6b88', font: { family: 'IBM Plex Mono', size: 10 }, boxWidth: 10 } }
+                        }
+                    }
+                });
+
+                // Hourly chart
+                new Chart(document.getElementById('hourChart'), {
+                    type: 'line',
+                    data: {
+                        labels: (data.by_hour || []).map(h => h.hour + ':00'),
+                        datasets: [{
+                            label: 'Alerts',
+                            data: (data.by_hour || []).map(h => h.count),
+                            borderColor: '#00f5ff',
+                            backgroundColor: 'rgba(0,245,255,0.05)',
+                            fill: true,
+                            tension: 0.4,
+                            pointBackgroundColor: '#00f5ff',
+                            pointRadius: 3,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { ticks: { color: '#3d6b88', font: { family: 'IBM Plex Mono', size: 10 } }, grid: { color: 'rgba(13,33,54,0.8)' } },
+                            y: { ticks: { color: '#3d6b88', font: { family: 'IBM Plex Mono', size: 10 } }, grid: { color: 'rgba(13,33,54,0.8)' } }
+                        },
+                        plugins: { legend: { labels: { color: '#3d6b88', font: { family: 'IBM Plex Mono', size: 10 } } } }
+                    }
+                });
+
+                // Top IPs table
+                if (data.top_ips && data.top_ips.length > 0) {
+                    document.getElementById('top-ips-table').innerHTML = data.top_ips.map((ip, i) => `
+                        <tr>
+                            <td class="td-rank">#${i + 1}</td>
+                            <td class="td-ip">${ip.ip}</td>
+                            <td>${ip.count}</td>
+                        </tr>`).join('');
+                }
+            });
+    </script>
+
+</body>
+</html>
