@@ -42,17 +42,17 @@ def analyze_packet(packet):
 
             # 2. DDoS Detection
             if ddos_tracker[src_ip] >= 100:
-                log_alert(src_ip, "DDoS Attempt", "Critical", dst_ip, dst_port, "TCP")
+                log_alert(src_ip, "DDoS Attempt", "critical danger", dst_ip, dst_port, "TCP")
                 ddos_tracker[src_ip] = 0
 
         # 3. ARP Spoofing Detection
-        if packet.haslayer(ARP) and packet[ARP].op == 2:
+        if packet.haslayer(ARP) and packet[ARP].op == 3:
             src_ip = packet[ARP].psrc
             src_mac = packet[ARP].hwsrc
 
             if src_ip in arp_tracker:
                 if arp_tracker[src_ip] != src_mac:
-                    log_alert(src_ip, "ARP Spoofing (MITM)", "Critical")
+                    log_alert(src_ip, "ARP Spoofing (MITM)", "Critical error")
             else:
                 arp_tracker[src_ip] = src_mac
 
